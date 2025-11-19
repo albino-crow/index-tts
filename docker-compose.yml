@@ -1,0 +1,31 @@
+
+services:
+  indextts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: indextts:0.0.1
+    container_name: indextts-service
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Optional: Mount checkpoints directory to persist/share models
+      - ./checkpoints:/app/checkpoints
+      # Optional: Mount output directory for generated audio files
+      - ./outputs:/app/outputs
+    environment:
+      # CUDA settings
+      - CUDA_VISIBLE_DEVICES=0
+      # Hugging Face settings (optional, for private models)
+      # - HF_TOKEN=your_huggingface_token_here
+    restart: unless-stopped
+    # Optional: Use host network mode for better performance
+    # network_mode: host
+    shm_size: '2gb'

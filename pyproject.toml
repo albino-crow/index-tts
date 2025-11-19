@@ -56,7 +56,8 @@ dependencies = [
   "torchaudio==2.8.*",
   "tqdm>=4.67.1",
   "transformers==4.52.1",
-
+  "fastapi==0.121.2",
+  "uvicorn[standard]==0.38.0",
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
@@ -68,9 +69,9 @@ webui = [
   "gradio==5.45.0",
 ]
 # To install the DeepSpeed support, use `uv sync --extra deepspeed` (or `--all-extras`).
-deepspeed = [
-  "deepspeed==0.17.1",
-]
+# deepspeed = [
+#   "deepspeed==0.17.1",
+# ]
 
 [project.urls]
 Homepage = "https://github.com/index-tts/index-tts"
