@@ -58,6 +58,8 @@ dependencies = [
   "transformers==4.52.1",
   "fastapi==0.121.2",
   "uvicorn[standard]==0.38.0",
+  "python-multipart==0.0.20",
+  "openai==1.109.1",
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
@@ -65,9 +67,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # To install the WebUI support, use `uv sync --extra webui` (or `--all-extras`).
-webui = [
-  "gradio==5.45.0",
-]
+webui = ["gradio==5.45.0"]
 # To install the DeepSpeed support, use `uv sync --extra deepspeed` (or `--all-extras`).
 # deepspeed = [
 #   "deepspeed==0.17.1",
