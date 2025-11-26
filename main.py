@@ -17,7 +17,7 @@ def root():
     return {"message": "Welcome to the TTS API"}
 
 
-@app.post("/audio", response_model=VoiceResponse)
+@app.post("/tts", response_model=VoiceResponse)
 def return_wav_file(
     voice_request: VoiceRequest,
     model=Depends(get_model),
