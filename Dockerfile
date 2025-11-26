@@ -1,6 +1,6 @@
 # Use NVIDIA CUDA base image for GPU support
 # Using CUDA 12.8 to match system CUDA version and PyTorch requirements
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 
 
 # Set working directory
