@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: indextts:0.0.1
+    image: index-tts:0.0.1
     container_name: indextts-service
     ports:
       - "8000:8000"
