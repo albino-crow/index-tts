@@ -7,6 +7,7 @@ import soundfile as sf
 import subprocess
 import tempfile
 import os
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
@@ -18,6 +19,7 @@ from endpoint_object.request.voice_request import (
     VoiceRequest,
 )
 from endpoint_object.respone.voice_response import GeneratedVoice, VoiceResponse
+from utils.minio_manager import get_minio_client
 from utils.textwrap import (
     resize_sentence,
     split_sentence_by_custom_ratios_preserved_ch,
@@ -133,6 +135,38 @@ def valid_input(request: VoiceRequest) -> (bool, str):  # type: ignore
     return True, None
 
 
+def parse_storage_url(url: str) -> tuple[str, str]:
+    """
+    Parse storage URL to extract bucket name and object path.
+    Supports both S3 URIs and HTTP/HTTPS URLs.
+
+    Examples:
+        s3://mybucket/path/to/file.wav -> ("mybucket", "path/to/file.wav")
+        http://127.0.0.1:9000/mybucket/path/to/file.wav -> ("mybucket", "path/to/file.wav")
+
+    :param url: Storage URL (S3 URI or HTTP URL)
+    :return: Tuple of (bucket_name, object_name)
+    """
+    if url.startswith("s3://"):
+        # S3 URI format: s3://bucket-name/path/to/file
+        uri_parts = url.replace("s3://", "").split("/", 1)
+        bucket_name = uri_parts[0]
+        object_name = uri_parts[1] if len(uri_parts) > 1 else ""
+    elif url.startswith(("http://", "https://")):
+        # HTTP URL format: http://host:port/bucket-name/path/to/file
+        parsed = urlparse(url)
+        path_parts = parsed.path.lstrip("/").split("/", 1)
+        bucket_name = path_parts[0] if len(path_parts) > 0 else ""
+        object_name = path_parts[1] if len(path_parts) > 1 else ""
+    else:
+        # Fallback: treat as local path or unknown format
+        raise ValueError(
+            f"Unsupported URL format: {url}. Expected s3://, http://, or https://"
+        )
+
+    return bucket_name, object_name
+
+
 def create_silence(sampling_rate, duration_ms):
     silence = np.zeros(int(duration_ms * sampling_rate))
     return silence
@@ -240,8 +274,27 @@ def create_output_seq(dubs, segments, duration):
     return np.concatenate(output_sequence)
 
 
+def read_audio_from_minio(minio_client, url: str):
+    # Parse URL to get bucket and object
+    bucket_name, object_name = parse_storage_url(url)
+
+    # Download from MinIO to BytesIO
+    response = minio_client.get_object(bucket_name, object_name)
+    audio_buffer = io.BytesIO(response.read())
+    response.close()
+    response.release_conn()
+    audio_buffer.seek(0)
+
+    # Read audio directly from BytesIO using soundfile
+    audio, sample_rate = sf.read(audio_buffer)
+    audio_buffer.close()
+
+    return audio, sample_rate
+
+
 def dub_audio(model, request: VoiceRequest):
     try:
+        minio_client = get_minio_client()
         valid, message = valid_input(request)
         if not valid:
             return VoiceResponse(
@@ -262,7 +315,10 @@ def dub_audio(model, request: VoiceRequest):
                 request.text, segments_percent
             )
 
-        audio, sample_rate = librosa.load(request.sourceVoice.url)
+        audio, sample_rate = read_audio_from_minio(
+            minio_client, request.sourceVoice.url
+        )
+
         start = 0
         number_of_try = 3
         best_dub = []
@@ -334,7 +390,24 @@ def dub_audio(model, request: VoiceRequest):
 
         # Generate output path based on input URI
         output_path = generate_output_path(request.sourceVoice.url)
-        sf.write(output_path, output_sequence, best_dub[0][1], format="WAV")
+
+        # Parse storage URL for output (supports both S3 URI and HTTP URL)
+        bucket_name, object_name = parse_storage_url(output_path)
+
+        # Write audio to BytesIO buffer
+        output_buffer = io.BytesIO()
+        sf.write(output_buffer, output_sequence, best_dub[0][1], format="WAV")
+        output_buffer.seek(0)
+
+        # Upload to MinIO
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            output_buffer,
+            length=output_buffer.getbuffer().nbytes,
+            content_type="audio/wav",
+        )
+        output_buffer.close()
 
         response = VoiceResponse(
             generatedVoice=GeneratedVoice(

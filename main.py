@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from endpoint_object.request.voice_request import VoiceRequest
 from endpoint_object.respone.voice_response import VoiceResponse
-from model_register import get_model
+from utils.model_register import get_model
 from service.dubbing_service import dub_audio
 
 app = FastAPI()

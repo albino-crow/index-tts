@@ -87,7 +87,6 @@ def estimate_syllables_per_word(word):
 def estimate_total_syllables_combined(sentence):
     words = re.findall(r"\b\w+\b", sentence.lower())
     word_count = len(words)
-    print(words)
     if word_count == 0:
         return 0
 
@@ -99,8 +98,6 @@ def estimate_total_syllables_combined(sentence):
 
 def split_sentence_by_custom_ratios_preserved_en(sentence, ratios):
     all_tokens = [token for token in re.split(r"(\b\w+\b)", sentence) if token]
-
-
 
     total_syllables = estimate_total_syllables_combined(sentence)
 
