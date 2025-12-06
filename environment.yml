@@ -60,5 +60,6 @@ dependencies:
       - wetext>=0.0.9
       - huggingface-hub[cli,hf_xet]
       - modelscope
+      - python-dotenv
 
 
