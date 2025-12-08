@@ -428,6 +428,8 @@ def dub_audio(model, request: VoiceRequest):
         )
 
         return response
+    except HTTPException as e:
+        raise e
     except Exception as e:
         # raise e
         raise HTTPException(
