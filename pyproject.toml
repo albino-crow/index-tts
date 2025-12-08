@@ -61,9 +61,11 @@ dependencies = [
   "python-multipart==0.0.20",
   "openai==1.109.1",
   "minio==7.2.20",
+  "boto3==1.42.4",
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
+  "boto3>=1.42.4",
 ]
 
 [project.optional-dependencies]

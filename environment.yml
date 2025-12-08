@@ -61,5 +61,6 @@ dependencies:
       - huggingface-hub[cli,hf_xet]
       - modelscope
       - python-dotenv
+      - boto3==1.42.4
 
 

@@ -290,21 +290,22 @@ def create_output_seq(dubs, segments, duration):
 
 
 def read_audio_from_minio(minio_client, url: str):
-    # Parse URL to get bucket and object
-    bucket_name, object_name = parse_storage_url(url)
+    # Create temporary file for download
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+        temp_path = temp_file.name
 
-    # Download from MinIO to BytesIO
-    response = minio_client.get_object(bucket_name, object_name)
-    audio_buffer = io.BytesIO(response.read())
-    response.close()
-    response.release_conn()
-    audio_buffer.seek(0)
+    try:
+        # Download from S3/MinIO using S3StorageHandler
+        minio_client.download(url, temp_path)
 
-    # Read audio directly from BytesIO using soundfile
-    audio, sample_rate = sf.read(audio_buffer)
-    audio_buffer.close()
+        # Read audio from temporary file
+        audio, sample_rate = sf.read(temp_path)
 
-    return audio, sample_rate
+        return audio, sample_rate
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def dub_audio(model, request: VoiceRequest):
@@ -405,29 +406,24 @@ def dub_audio(model, request: VoiceRequest):
         # Generate output path based on input URI
         output_path = generate_output_path(request.sourceVoice.url)
 
-        # Parse storage URL for output (supports both S3 URI and HTTP URL)
-        bucket_name, object_name = parse_storage_url(output_path)
+        # Create temporary file for upload
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
+            temp_output_path = temp_output.name
+            sf.write(temp_output_path, output_sequence, best_dub[0][1], format="WAV")
 
-        # Write audio to BytesIO buffer
-        output_buffer = io.BytesIO()
-        sf.write(output_buffer, output_sequence, best_dub[0][1], format="WAV")
-        output_buffer.seek(0)
+        try:
+            # Upload to S3/MinIO using S3StorageHandler
+            minio_client.upload(temp_output_path, output_path)
 
-        # Upload to MinIO
-        minio_client.put_object(
-            bucket_name,
-            object_name,
-            output_buffer,
-            length=output_buffer.getbuffer().nbytes,
-            content_type="audio/wav",
-        )
-        output_buffer.close()
+            response = GeneratedVoice(
+                url=output_path, startTime=0.0, endTime=len(output_sequence) / sampling_rate
+            )
 
-        response = GeneratedVoice(
-            url=output_path, startTime=0.0, endTime=len(output_sequence) / sampling_rate
-        )
-
-        return response
+            return response
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_output_path):
+                os.remove(temp_output_path)
     except HTTPException as e:
         raise e
     except Exception as e:
