@@ -374,9 +374,7 @@ def dub_audio(model, request: VoiceRequest):
                 created_dubs.append(
                     ((sampling_rate, wav_data), mode, length_of_dub, length_diff)
                 )
-                print(
-                    f"Audio size - Samples: {len(wav_data)}, Duration: {len(wav_data) / sampling_rate:.2f}s, Bytes: {wav_data.nbytes}"
-                )
+
                 if length_diff <= 0.1:  # within 10% difference
                     is_length_acceptable = True
 
@@ -399,9 +397,7 @@ def dub_audio(model, request: VoiceRequest):
             adjust_wave_data = adjust_audio_speed(
                 wave_data, sample_rate, total_length * percent / 100
             )
-            print(
-                f"Audio size - Samples: {len(adjust_wave_data)}, Duration: {len(adjust_wave_data) / sample_rate:.2f}s, Bytes: {adjust_wave_data.nbytes}"
-            )
+
             best_dub.append((adjust_wave_data, sample_rate))
 
         output_sequence = create_output_seq(best_dub, segments, total_length)
