@@ -15,6 +15,7 @@ def resize_sentence(text: str, percent: float, mode: str, language: str):
     mode: "longer" or "shorter"
     language: the language of the input text (e.g., "Chinese", "English", "Farsi")
     """
+    percent *= 100  # convert to percentage for prompt
 
     system_prompt = (
         "You are a precise text-resizer. "
@@ -30,7 +31,7 @@ The following text is in **{language}**:
 {text}
 
 Task:
-Make it {mode} by about {percent}%.
+Make it {mode.value} by about {percent:.2f}%.
 Keep the SAME meaning.
 Keep it in **{language}**.
 Return ONLY the rewritten text.

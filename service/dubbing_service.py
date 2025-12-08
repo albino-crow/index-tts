@@ -274,7 +274,7 @@ def create_output_seq(dubs, segments, duration):
         # Add silence before the segment if needed
         if segment.start_time > current_time:
             silence_duration = segment.start_time - current_time
-            silence = create_silence(sampling_rate, silence_duration * 1000)
+            silence = create_silence(sampling_rate, silence_duration)
             output_sequence.append(silence)
 
         # Add the dubbed audio segment
@@ -284,7 +284,7 @@ def create_output_seq(dubs, segments, duration):
 
     if current_time < duration:
         silence_duration = duration - current_time
-        silence = create_silence(sampling_rate, silence_duration * 1000)
+        silence = create_silence(sampling_rate, silence_duration)
         output_sequence.append(silence)
     return np.concatenate(output_sequence)
 
@@ -338,7 +338,9 @@ def dub_audio(model, request: VoiceRequest):
         number_of_try = 3
         best_dub = []
 
-        for index, (part, percent) in enumerate(zip(parts, segments_percent)):
+        for index, (part, percent, segment) in enumerate(
+            zip(parts, segments_percent, segments)
+        ):
             end = start + int(len(audio) * (percent / 100))
 
             audio_segment = (
@@ -348,9 +350,12 @@ def dub_audio(model, request: VoiceRequest):
             start = end
             is_length_acceptable = False
             created_dubs = []
-            for try_num in range(number_of_try):
-                # Write audio segment to BytesIO buffer
 
+            # Calculate the target duration for this segment based on actual timestamps
+            segment_target_duration = segment.end_time - segment.start_time
+
+            for _ in range(number_of_try):
+                # Write audio segment to BytesIO buffer
                 audio_buffer = io.BytesIO()
                 sf.write(audio_buffer, audio_segment, sample_rate, format="WAV")
                 audio_buffer.seek(0)
@@ -369,8 +374,9 @@ def dub_audio(model, request: VoiceRequest):
 
                 length_of_dub = get_length_of_voice(sampling_rate, wav_data)
                 length_diff, mode = compare_length_original_and_dub(
-                    length_of_dub, total_length * percent / 100
+                    length_of_dub, segment_target_duration
                 )
+
                 created_dubs.append(
                     ((sampling_rate, wav_data), mode, length_of_dub, length_diff)
                 )
@@ -379,6 +385,7 @@ def dub_audio(model, request: VoiceRequest):
                     is_length_acceptable = True
 
                     break
+
                 part = resize_sentence(part, length_diff, mode, "English")
 
             selected_dub = None
@@ -394,8 +401,9 @@ def dub_audio(model, request: VoiceRequest):
                         selected_dub = dub
 
             sample_rate, wave_data = selected_dub[0]
+
             adjust_wave_data = adjust_audio_speed(
-                wave_data, sample_rate, total_length * percent / 100
+                wave_data, sample_rate, segment_target_duration
             )
 
             best_dub.append((adjust_wave_data, sample_rate))
@@ -424,6 +432,8 @@ def dub_audio(model, request: VoiceRequest):
             )
 
             return response
+        except Exception as e:
+            raise e
         finally:
             # Clean up temporary file
             if os.path.exists(temp_output_path):
