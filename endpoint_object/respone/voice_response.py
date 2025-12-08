@@ -9,6 +9,4 @@ class GeneratedVoice(BaseModel):
 
 
 class VoiceResponse(BaseModel):
-    generatedVoice: Optional[GeneratedVoice] = None
-    status: int
-    message: Optional[str] = None
+    generatedVoice: GeneratedVoice

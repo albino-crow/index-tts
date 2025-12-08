@@ -354,7 +354,6 @@ def dub_audio(model, request: VoiceRequest):
                 audio_buffer = io.BytesIO()
                 sf.write(audio_buffer, audio_segment, sample_rate, format="WAV")
                 audio_buffer.seek(0)
-
                 try:
                     sampling_rate, wav_data = model.infer(
                         output_path=None,
@@ -375,7 +374,9 @@ def dub_audio(model, request: VoiceRequest):
                 created_dubs.append(
                     ((sampling_rate, wav_data), mode, length_of_dub, length_diff)
                 )
-
+                print(
+                    f"Audio size - Samples: {len(wav_data)}, Duration: {len(wav_data) / sampling_rate:.2f}s, Bytes: {wav_data.nbytes}"
+                )
                 if length_diff <= 0.1:  # within 10% difference
                     is_length_acceptable = True
 
@@ -398,6 +399,9 @@ def dub_audio(model, request: VoiceRequest):
             adjust_wave_data = adjust_audio_speed(
                 wave_data, sample_rate, total_length * percent / 100
             )
+            print(
+                f"Audio size - Samples: {len(adjust_wave_data)}, Duration: {len(adjust_wave_data) / sample_rate:.2f}s, Bytes: {adjust_wave_data.nbytes}"
+            )
             best_dub.append((adjust_wave_data, sample_rate))
 
         output_sequence = create_output_seq(best_dub, segments, total_length)
@@ -415,8 +419,12 @@ def dub_audio(model, request: VoiceRequest):
             # Upload to S3/MinIO using S3StorageHandler
             minio_client.upload(temp_output_path, output_path)
 
-            response = GeneratedVoice(
-                url=output_path, startTime=0.0, endTime=len(output_sequence) / sampling_rate
+            response = VoiceResponse(
+                generatedVoice=GeneratedVoice(
+                    url=output_path,
+                    startTime=0.0,
+                    endTime=len(output_sequence) / sampling_rate,
+                )
             )
 
             return response
