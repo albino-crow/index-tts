@@ -47,6 +47,7 @@ def create_segment(
     segments = []
     total_duration = sum(d.endTime - d.startTime for d in diarization)
     for d in diarization:
+        has_overlap = False
         for e in emotion:
             # find overlap
             start = max(d.startTime, e.startTime)
@@ -62,6 +63,20 @@ def create_segment(
                         emotion=e.emotion,
                     )
                 )
+                has_overlap = True
+
+        # If no emotion overlap found, create segment without emotion
+        if not has_overlap:
+            percent = (d.endTime - d.startTime) / total_duration * 100
+            segments.append(
+                AudioSegment(
+                    start_time=d.startTime,
+                    end_time=d.endTime,
+                    percent=percent,
+                    speaker=d.speaker,
+                    emotion="neutral",  # Default emotion when none is specified
+                )
+            )
     total_segment_percent = sum(s.percent for s in segments)
     if total_segment_percent != 100:
         for s in segments:
@@ -297,10 +312,9 @@ def dub_audio(model, request: VoiceRequest):
         minio_client = get_minio_client()
         valid, message = valid_input(request)
         if not valid:
-            return VoiceResponse(
-                generatedVoice=None,
-                status=400,
-                message=f"Invalid request data: {message}",
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid request data: {message}",
             )
         segments = create_segment(request.diarization, request.emotion)
         total_length = sum(d.endTime - d.startTime for d in request.diarization)
@@ -409,16 +423,14 @@ def dub_audio(model, request: VoiceRequest):
         )
         output_buffer.close()
 
-        response = VoiceResponse(
-            generatedVoice=GeneratedVoice(
-                url=output_path,
-                startTime=0.0,
-                endTime=len(output_sequence) / sampling_rate,
-            ),
-            status=200,
-            message=None,
+        response = GeneratedVoice(
+            url=output_path, startTime=0.0, endTime=len(output_sequence) / sampling_rate
         )
+
         return response
     except Exception as e:
         # raise e
-        return VoiceResponse(generatedVoice=None, status=500, message=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invalid request data: {str(e)}",
+        )
