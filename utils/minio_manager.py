@@ -42,9 +42,6 @@ class S3StorageHandler:
 
     def download(self, url: str, filename: str):
         bucket, key = self.parse_s3_url(url)
-        print(bucket)
-        print(key)
-        print(filename)
         self.s3_client.download_file(bucket, key, filename)
 
     def upload(self, filename: str, url: str):

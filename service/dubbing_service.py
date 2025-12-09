@@ -193,13 +193,30 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
     :param wav_data: Audio data as numpy array
     :param sampling_rate: Sample rate of the audio
     :param target_duration: Target duration in seconds
-    :return: Speed-adjusted audio data
+    :return: Speed-adjusted audio data with exact target duration
     """
     current_duration = len(wav_data) / sampling_rate
     if current_duration == 0:
         return wav_data
 
     speed_factor = current_duration / target_duration
+
+    # Handle case where audio needs to be slower (longer duration)
+    if speed_factor < 1.0:
+        # Audio is shorter than target, needs to be slowed down
+        if speed_factor >= 0.9:
+            # Can slow down by up to 10% using ffmpeg
+            atempo_value = speed_factor  # This will be between 0.9 and 1.0
+            use_silence_padding = False
+        else:
+            # Needs to be slowed by more than 10%
+            # Only slow by 10% (atempo=0.9), then add silence
+            atempo_value = 0.9
+            use_silence_padding = True
+    else:
+        # Audio is longer than target, always speed it up
+        atempo_value = None
+        use_silence_padding = False
 
     # ffmpeg's atempo filter only supports speed factors between 0.5 and 2.0
     # For larger changes, we need to chain multiple atempo filters
@@ -216,24 +233,31 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
         temp_output_path = temp_output.name
 
     try:
-        # Build atempo filter chain for speed factors outside 0.5-2.0 range
+        # Build atempo filter chain
         atempo_filters = []
-        remaining_factor = speed_factor
 
-        while remaining_factor > 2.0:
-            atempo_filters.append("atempo=2.0")
-            remaining_factor /= 2.0
+        if atempo_value is not None:
+            # For slower audio (shorter duration that needs stretching)
+            atempo_filters.append(f"atempo={atempo_value}")
+        else:
+            # For faster audio - always speed up
+            remaining_factor = speed_factor
 
-        while remaining_factor < 0.5:
-            atempo_filters.append("atempo=0.5")
-            remaining_factor /= 0.5
+            while remaining_factor > 2.0:
+                atempo_filters.append("atempo=2.0")
+                remaining_factor /= 2.0
 
-        if remaining_factor != 1.0:
-            atempo_filters.append(f"atempo={remaining_factor}")
+            while remaining_factor < 0.5:
+                atempo_filters.append("atempo=0.5")
+                remaining_factor /= 0.5
+
+            if remaining_factor != 1.0:
+                atempo_filters.append(f"atempo={remaining_factor}")
 
         filter_chain = ",".join(atempo_filters) if atempo_filters else "anull"
 
         # Run ffmpeg command
+        print(filter_chain)
         cmd = [
             "ffmpeg",
             "-i",
@@ -243,6 +267,7 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
             "-y",  # Overwrite output file
             temp_output_path,
         ]
+        print(cmd)
 
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -254,7 +279,36 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
         # Read the adjusted audio
         wav_adjusted, _ = sf.read(temp_output_path)
 
-        # Calculate actual duration after adjustment
+        # For slow-down cases where we need more than 10%, add silence padding
+        if use_silence_padding:
+            target_samples = int(target_duration * sampling_rate)
+            current_samples = len(wav_adjusted)
+
+            if current_samples < target_samples:
+                # Pad with silence to reach target duration (split before and after)
+                padding_needed = target_samples - current_samples
+                padding_before = padding_needed // 2
+                padding_after = padding_needed - padding_before
+
+                silence_before = np.zeros(padding_before)
+                silence_after = np.zeros(padding_after)
+
+                wav_adjusted = np.concatenate(
+                    [silence_before, wav_adjusted, silence_after]
+                )
+        else:
+            # For speed-up cases or normal slow-down, ensure exact duration
+            target_samples = int(target_duration * sampling_rate)
+            current_samples = len(wav_adjusted)
+
+            if current_samples > target_samples:
+                # Trim excess samples
+                wav_adjusted = wav_adjusted[:target_samples]
+            elif current_samples < target_samples:
+                # Minor padding needed
+                padding_needed = target_samples - current_samples
+                padding = np.zeros(padding_needed)
+                wav_adjusted = np.concatenate([wav_adjusted, padding])
 
         return wav_adjusted
 
@@ -272,7 +326,9 @@ def create_output_seq(dubs, segments, duration):
     sampling_rate = dubs[0][1]
     for index, segment in enumerate(segments):
         # Add silence before the segment if needed
+        print(segment.start_time > current_time)
         if segment.start_time > current_time:
+            print("Here is silence", segment.start_time, current_time)
             silence_duration = segment.start_time - current_time
             silence = create_silence(sampling_rate, silence_duration)
             output_sequence.append(silence)
@@ -335,7 +391,6 @@ def dub_audio(model, request: VoiceRequest):
         )
 
         start = 0
-        number_of_try = 3
         best_dub = []
 
         for index, (part, percent, segment) in enumerate(
@@ -349,12 +404,17 @@ def dub_audio(model, request: VoiceRequest):
 
             start = end
             is_length_acceptable = False
+            unacceptable_conditions = True
             created_dubs = []
 
             # Calculate the target duration for this segment based on actual timestamps
             segment_target_duration = segment.end_time - segment.start_time
+            number_of_try = 1
 
-            for _ in range(number_of_try):
+            while unacceptable_conditions or not (
+                number_of_try <= 0 or is_length_acceptable
+            ):
+                number_of_try -= 1
                 # Write audio segment to BytesIO buffer
                 audio_buffer = io.BytesIO()
                 sf.write(audio_buffer, audio_segment, sample_rate, format="WAV")
@@ -381,11 +441,13 @@ def dub_audio(model, request: VoiceRequest):
                     ((sampling_rate, wav_data), mode, length_of_dub, length_diff)
                 )
 
+                if unacceptable_conditions and length_diff < 0.2:
+                    unacceptable_conditions = False
+
                 if length_diff <= 0.1:  # within 10% difference
                     is_length_acceptable = True
 
                     break
-
                 part = resize_sentence(part, length_diff, mode, "English")
 
             selected_dub = None
@@ -405,9 +467,7 @@ def dub_audio(model, request: VoiceRequest):
             adjust_wave_data = adjust_audio_speed(
                 wave_data, sample_rate, segment_target_duration
             )
-
             best_dub.append((adjust_wave_data, sample_rate))
-
         output_sequence = create_output_seq(best_dub, segments, total_length)
         output_sequence = adjust_audio_speed(output_sequence, sample_rate, total_length)
 
@@ -426,8 +486,8 @@ def dub_audio(model, request: VoiceRequest):
             response = VoiceResponse(
                 generatedVoice=GeneratedVoice(
                     url=output_path,
-                    startTime=0.0,
-                    endTime=len(output_sequence) / sampling_rate,
+                    startTime=request.sourceVoice.startTime,
+                    endTime=request.sourceVoice.endTime,
                 )
             )
 

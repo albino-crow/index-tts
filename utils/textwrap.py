@@ -31,7 +31,7 @@ The following text is in **{language}**:
 {text}
 
 Task:
-Make it {mode.value} by about {percent:.2f}%.
+Make it {mode.value} by about {percent:.2f} percent.
 Keep the SAME meaning.
 Keep it in **{language}**.
 Return ONLY the rewritten text.
