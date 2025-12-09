@@ -23,6 +23,7 @@ def resize_sentence(text: str, percent: float, mode: str, language: str):
         "You must rewrite text only in the specified language. "
         "Do NOT add or remove meaning. "
         "Only adjust the length by approximately the requested percentage."
+        "Do NOT use abbreviations; write out at least one full word instead of any shortened form."
     )
 
     user_prompt = f"""

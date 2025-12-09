@@ -381,37 +381,35 @@ def dub_audio(model, request: VoiceRequest):
                 request.text, segments_percent
             )
 
-        audio, sample_rate = read_audio_from_minio(
+        audio, audio_sample_rate = read_audio_from_minio(
             minio_client, request.sourceVoice.url
         )
 
-        start = 0
         best_dub = []
 
         for index, (part, percent, segment) in enumerate(
             zip(parts, segments_percent, segments)
         ):
-            end = start + int(len(audio) * (percent / 100))
+            # Use segment's actual start and end times to extract audio
+            start_sample = int(segment.start_time * audio_sample_rate)
+            end_sample = int(segment.end_time * audio_sample_rate)
 
-            audio_segment = (
-                audio[start:end] if index < len(parts) - 1 else audio[start:]
-            )
+            audio_segment = audio[start_sample:end_sample]
 
-            start = end
             is_length_acceptable = False
             unacceptable_conditions = True
             created_dubs = []
 
             # Calculate the target duration for this segment based on actual timestamps
             segment_target_duration = segment.end_time - segment.start_time
-            number_of_try = 3
-            while unacceptable_conditions or not (
-                number_of_try <= 0 or is_length_acceptable
+            number_of_try = 6
+            while (unacceptable_conditions and number_of_try > 0) or not (
+                number_of_try <= 3 or is_length_acceptable
             ):
                 number_of_try -= 1
                 # Write audio segment to BytesIO buffer
                 audio_buffer = io.BytesIO()
-                sf.write(audio_buffer, audio_segment, sample_rate, format="WAV")
+                sf.write(audio_buffer, audio_segment, audio_sample_rate, format="WAV")
                 audio_buffer.seek(0)
                 try:
                     sampling_rate, wav_data = model.infer(
@@ -465,11 +463,13 @@ def dub_audio(model, request: VoiceRequest):
             )
             best_dub.append((adjust_wave_data, sample_rate))
         duration = request.sourceVoice.endTime - request.sourceVoice.startTime
+
         output_sequence = create_output_seq(
             best_dub,
             segments,
             duration,
         )
+
         output_sequence = adjust_audio_speed(
             output_sequence,
             sample_rate,
