@@ -257,7 +257,6 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
         filter_chain = ",".join(atempo_filters) if atempo_filters else "anull"
 
         # Run ffmpeg command
-        print(filter_chain)
         cmd = [
             "ffmpeg",
             "-i",
@@ -267,7 +266,6 @@ def adjust_audio_speed(wav_data, sampling_rate, target_duration):
             "-y",  # Overwrite output file
             temp_output_path,
         ]
-        print(cmd)
 
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -326,9 +324,7 @@ def create_output_seq(dubs, segments, duration):
     sampling_rate = dubs[0][1]
     for index, segment in enumerate(segments):
         # Add silence before the segment if needed
-        print(segment.start_time > current_time)
         if segment.start_time > current_time:
-            print("Here is silence", segment.start_time, current_time)
             silence_duration = segment.start_time - current_time
             silence = create_silence(sampling_rate, silence_duration)
             output_sequence.append(silence)
@@ -374,7 +370,6 @@ def dub_audio(model, request: VoiceRequest):
                 detail=f"Invalid request data: {message}",
             )
         segments = create_segment(request.diarization, request.emotion)
-        total_length = sum(d.endTime - d.startTime for d in request.diarization)
         segments_percent = [s.percent for s in segments]
         if request.targetLanguage.lower() == "english":
             parts = split_sentence_by_custom_ratios_preserved_en(
@@ -409,8 +404,7 @@ def dub_audio(model, request: VoiceRequest):
 
             # Calculate the target duration for this segment based on actual timestamps
             segment_target_duration = segment.end_time - segment.start_time
-            number_of_try = 1
-
+            number_of_try = 3
             while unacceptable_conditions or not (
                 number_of_try <= 0 or is_length_acceptable
             ):
@@ -448,7 +442,9 @@ def dub_audio(model, request: VoiceRequest):
                     is_length_acceptable = True
 
                     break
-                part = resize_sentence(part, length_diff, mode, "English")
+                new_part = resize_sentence(part, length_diff, mode, "English")
+                if len(new_part) != 0:
+                    part = new_part
 
             selected_dub = None
             if is_length_acceptable:
@@ -468,8 +464,17 @@ def dub_audio(model, request: VoiceRequest):
                 wave_data, sample_rate, segment_target_duration
             )
             best_dub.append((adjust_wave_data, sample_rate))
-        output_sequence = create_output_seq(best_dub, segments, total_length)
-        output_sequence = adjust_audio_speed(output_sequence, sample_rate, total_length)
+        duration = request.sourceVoice.endTime - request.sourceVoice.startTime
+        output_sequence = create_output_seq(
+            best_dub,
+            segments,
+            duration,
+        )
+        output_sequence = adjust_audio_speed(
+            output_sequence,
+            sample_rate,
+            duration,
+        )
 
         # Generate output path based on input URI
         output_path = generate_output_path(request.sourceVoice.url)
