@@ -440,7 +440,10 @@ def dub_audio(model, request: VoiceRequest):
                     is_length_acceptable = True
 
                     break
-                new_part = resize_sentence(part, length_diff, mode, "English")
+                new_part = resize_sentence(
+                    part, length_diff, mode, request.targetLanguage.lower()
+                )
+
                 if len(new_part) != 0:
                     part = new_part
 
